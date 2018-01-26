@@ -1,22 +1,62 @@
 # https://www.niche.com/k12/search/best-private-high-schools/
-# SchoolListScraper scrapes each school's Niche.com page from above site 
+# SchoolListScraper scrapes 8,147 schools' Niche.com page from above site
+import logging
+from scrapy.utils.log import configure_logging  
 import scrapy
 
 class SchoolListScraper(scrapy.Spider):
 	name = 'listscraper'
-	start_urls = ['https://www.niche.com/k12/search/best-private-high-schools/']
+	start_urls = ['https://www.niche.com/k12/search/best-schools-for-the-arts/?gradeLevel=high&type=private']
+	configure_logging(install_root_handler=False)
+	logging.basicConfig(filename='log.txt', format='%(levelname)s: %(message)s',level=logging.INFO)
 
 	def parse(self,response):
-		for school in response.css('div.card'):
+		for school_object in response.css('div.card'):
+			school = {'name' : school_object.css('.search-result__title::text').extract_first()}
+			school['niche_url'] = school_object.css('.search-result__link::attr(href)').extract_first()
+			if school.get('niche_url'):
+				request = scrapy.Request(school['niche_url'], callback=self.parse_school_page)
+				request.meta['school'] = school
+				yield request
+	# then move on to 'Next Page' using link:
+				next = response.css('.pagination__next > a::attr(href)').extract_first()
+				if next:
+					yield response.follow(next, self.parse)		
+
+	def parse_school_page(self, response):
+		school = response.meta.get("school", "")
+		print(school)
+		if school:
+			school['url'] = response.css('.profile__website__link::attr(href)').extract_first() or 'N/A'
+			school['phone'] = response.css('.scalar--three .scalar__value span::text').extract_first() or 'N/A'
+			school['address_street'] = response.css('.profile__address div div:nth-child(1)::text').extract_first() or 'N/A'
+			school['address_city'] = response.css('.profile__address div+ div::text').extract_first() or 'N/A'
+			school['address_state'] = response.css('.profile__address div+ div').re(r', [A-Z]{2}')[0][2:] or 'N/A'
+			school['nr_of_students'] = response.css('#students .scalar__value span::text').extract_first() or 'N/A'
+			school['annual_tuition'] = response.css('#tuition .scalar__value span::text').extract_first() or 'N/A'
+			school['tuition_with_boarding'] = response.css('#tuition .scalar--three:nth-child(1) .scalar__value span::text').extract_first() or 'N/A'
+			if response.css('#tuition').re(r'\bBoarding\b\s\(\bTuition\b\s\+\s\bBoarding\b'):
+				school['received_financial_aid'] = response.css('#tuition .scalar--three:nth-child(2) .scalar__value span::text').extract_first() or 'N/A'
+				school['average_financial_aid'] = response.css('#tuition .scalar--three:nth-child(3) .scalar__value span::text').extract_first() or 'N/A'
+			else:
+				school['received_financial_aid'] = response.css('#tuition .scalar--three:nth-child(1) .scalar__value span::text').extract_first() or 'N/A'
+				school['average_financial_aid'] = response.css('#tuition .scalar--three:nth-child(2) .scalar__value span::text').extract_first() or 'N/A'
+			school['niche_grade'] = response.css('.niche__grade::text').extract_first() or 'N/A'
 			yield {
-				'name': school.css('.search-result__title::text').extract_first(),
-				'niche_url': school.css('.search-result__link::attr(href)').extract_first()
+				'name': school.get('name'),
+				'school_url': school.get('url'),
+				'phone': school.get('phone'),
+				'street': school.get('address_street'),
+				'city': school.get('address_city'),
+				'state': school.get('address_state'),
+				'nr_of_students': school.get('nr_of_students'),
+				'annual_tuition': school.get('annual_tuition'),
+				'tuition_with_boarding': school.get('tuition_with_boarding'),
+				'received_financial_aid': school.get('received_financial_aid'),
+				'average_financial_aid': school.get('average_financial_aid'),
+				'niche_url': school.get('niche_url'),
+				'niche_grade': school.get('niche_grade')
 			}
-			# 'Next Page' link URL:
-			next = response.css('.pagination__next > a::attr(href)').extract_first()
-			if next:
-				yield response.follow(next, self.parse)
 
-
-
-# response.css('.pagination__next > a::attr(href)').extract_first()
+		else:
+			yield {'no_school'}

@@ -1,5 +1,5 @@
 # https://www.niche.com/k12/search/best-private-high-schools/
-# SchoolListScraper scrapes 8,147 schools' Niche.com page from above site
+# SchoolListScraper scrapes 8,000+ schools' Niche.com page from above site
 import logging
 from scrapy.utils.log import configure_logging  
 import scrapy
